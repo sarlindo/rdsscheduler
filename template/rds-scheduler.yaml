@@ -13,10 +13,13 @@ Parameters:
       - 15minutes
       - 30minutes
       - 1hour
+  S3BucketName:
+    Description: S3 bucket name in which lambda zip code is located
+    Type: String
   SNSTopic:
     Description: SNS Topic to send SNS Messages
     Type: String
-    Default: ''
+    Default: 'None'
   DefaultTimeZone:
     Description: Default Time Zone
     Type: String
@@ -57,13 +60,6 @@ Parameters:
     MaxValue: '10000'
     MinValue: '1'
     Type: Number
-  SendAnonymousData:
-    Description: Send anonymous data to AWS
-    Type: String
-    Default: 'Yes'
-    AllowedValues:
-      - 'Yes'
-      - 'No'
   CloudWatchMetrics:
     Description: Create CloudWatch Custom Metric
     Type: String
@@ -108,10 +104,6 @@ Metadata:
           default: CloudWatch Custom Metric
         Parameters:
           - CloudWatchMetrics
-      - Label:
-          default: Anonymous Metrics Request
-        Parameters:
-          - SendAnonymousData
 Resources:
   rdsSchedulerRole:
     Type: 'AWS::IAM::Role'
@@ -142,10 +134,8 @@ Resources:
                   - 'arn:aws:dynamodb:*:*:table/*'
               - Effect: Allow
                 Action:
-                  - 'rds:StartInstances'
-                  - 'rds:StopInstances'
+                  - 'rds:*'
                   - 'ec2:DescribeRegions'
-                  - 'rds:DescribeInstances'
                   - 'kms:CreateGrant'
                   - 'cloudwatch:PutMetricData'
                   - 'cloudformation:DescribeStacks'
@@ -161,11 +151,8 @@ Resources:
         RDS Scheduler Lambda function for automatically starting and stopping
         RDS instances.
       Code:
-        S3Bucket: !Join
-          - ''
-          - - solutions-
-            - !Ref 'AWS::Region'
-        S3Key: rds-scheduler/v2/rds-scheduler.zip
+        S3Bucket: !Ref S3BucketName
+        S3Key: rds-scheduler.zip
       Runtime: python2.7
       Timeout: '300'
   CreateParamDDB:
@@ -252,43 +239,40 @@ Resources:
         - SolutionHelper
         - Arn
       StoreInDDB: !Join
-        - ''
-        - - '{ ''TableName'' : '''
-          - !Ref CreateParamDDB
-          - ''', '
-          - '''Item'': {'
-          - '''CustomTagName'': {''S'': '''
-          - !Ref CustomTagName
-          - '''},'
-          - '''SolutionName'': {''S'': ''RDSScheduler''},'
-          - '''SNSTopic'': {''S'': '''
-          - !Ref SNSTopic
-          - '''},'
-          - '''DefaultTimeZone'': {''S'': '''
-          - !Ref DefaultTimeZone
-          - '''},'
-          - '''DefaultStartTime'': {''S'': '''
-          - !Ref DefaultStartTime
-          - '''},'
-          - '''DefaultStopTime'': {''S'': '''
-          - !Ref DefaultStopTime
-          - '''},'
-          - '''SendAnonymousData'': {''S'': '''
-          - !Ref SendAnonymousData
-          - '''},'
-          - '''CloudWatchMetrics'': {''S'': '''
-          - !Ref CloudWatchMetrics
-          - '''},'
-          - '''UUID'': {''S'': '''
-          - !GetAtt
-            - CreateUniqueID
-            - UUID
-          - '''},'
-          - '''DefaultDaysActive'': {''S'': '''
-          - !Ref DefaultDaysActive
-          - '''}'
-          - '}'
-          - '}'
+          - ''
+          - - '{ ''TableName'' : '''
+            - !Ref CreateParamDDB
+            - ''', '
+            - '''Item'': {'
+            - '''CustomTagName'': {''S'': '''
+            - !Ref CustomTagName
+            - '''},'
+            - '''SolutionName'': {''S'': ''RDSScheduler''},'
+            - '''SNSTopic'': {''S'': '''
+            - !Ref SNSTopic
+            - '''},'
+            - '''DefaultTimeZone'': {''S'': '''
+            - !Ref DefaultTimeZone
+            - '''},'
+            - '''DefaultStartTime'': {''S'': '''
+            - !Ref DefaultStartTime
+            - '''},'
+            - '''DefaultStopTime'': {''S'': '''
+            - !Ref DefaultStopTime
+            - '''},'
+            - '''CloudWatchMetrics'': {''S'': '''
+            - !Ref CloudWatchMetrics
+            - '''},'
+            - '''UUID'': {''S'': '''
+            - !GetAtt
+              - CreateUniqueID
+              - UUID
+            - '''},'
+            - '''DefaultDaysActive'': {''S'': '''
+            - !Ref DefaultDaysActive
+            - '''}'
+            - '}'
+            - '}'
       DependsOn:
         - CreateUniqueID
         - CreateParamDDB

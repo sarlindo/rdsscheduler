@@ -80,14 +80,8 @@ def lambda_handler(event, context):
     accountid = boto3.client('sts').get_caller_identity().get('Account')
 
     ec2 = boto3.client('ec2')
-    cf = boto3.client('cloudformation')
-    outputs = {}
-    stack_name = context.invoked_function_arn.split(':')[6].rsplit('-', 2)[0]
-    response = cf.describe_stacks(StackName=stack_name)
-    for e in response['Stacks'][0]['Outputs']:
-        outputs[e['OutputKey']] = e['OutputValue']
-    ddbTableName = outputs['DDBTableName']
 
+    ddbTableName = 'RDS-Scheduler'
     awsRegions = ec2.describe_regions()['Regions']
     dynamodb = boto3.resource('dynamodb')
     table = dynamodb.Table(ddbTableName)
@@ -105,7 +99,6 @@ def lambda_handler(event, context):
     defaultStopTime = str(item['DefaultStopTime'])
     defaultTimeZone = str(item['DefaultTimeZone'])
     defaultDaysActive = str(item['DefaultDaysActive'])
-    sendData = str(item['SendAnonymousData']).lower()
     createMetrics = str(item['CloudWatchMetrics']).lower()
     UUID = str(item['UUID'])
     SNSTopicArn = str(item['SNSTopic'])
@@ -130,13 +123,29 @@ def lambda_handler(event, context):
             rdsinstances = rds.describe_db_instances()
             for i in rdsinstances['DBInstances']:
                 rdsname = i['DBInstanceIdentifier']
+                if len(i['ReadReplicaDBInstanceIdentifiers']):
+                    print "----- No action against RDS instance (with read replica): ", rdsname
+                    continue
+
+                if "ReadReplicaSourceDBInstanceIdentifier" in i.keys():
+                    print "----- No action against RDS instance (replication): ", rdsname
+                    continue
+
+                if i['MultiAZ']:
+                    print "----- No action against RDS instance (Multiple AZ): ", rdsname
+                    continue
+
+                if i['DBInstanceStatus'] not in ["available","stopped"]:
+                    print "----- No action against RDS instance (unsupported status):", rdsname
+                    continue
+
                 arn = "arn:aws:rds:%s:%s:db:%s"%(awsregion,accountid,rdsname)
                 rdstags = rds.list_tags_for_resource(ResourceName=arn)
                 if 'TagList' in rdstags:
                     for t in rdstags['TagList']:
                         if t['Key'][:customTagLen] == customTagName:
 
-                            ptag = t['Value'].split(";")
+                            ptag = t['Value'].split(":")
 
                             # Split out Tag & Set Variables to default
                             default1 = 'default'
@@ -207,14 +216,16 @@ def lambda_handler(event, context):
             # Execute Start and Stop Commands
             if startList:
                 print ("Starting", len(startList), "instances", startList)
-                #send_sns(SNSTopicArn,"Starting " + str(len(startList)) + " instances " + ','.join(startList))
+                if SNSTopicArn != "None":
+                    send_sns(SNSTopicArn,"Starting " + str(len(startList)) + " instances " + ','.join(startList))
                 startRDS(rds,startList)
             else:
                 print ("No Instances to Start")
 
             if stopList:
                 print ("Stopping", len(stopList) ,"instances", stopList)
-                #send_sns(SNSTopicArn,"Stopping " + str(len(stopList)) + " instances " + ','.join(stopList))
+                if SNSTopicArn != "None":
+                    send_sns(SNSTopicArn,"Stopping " + str(len(stopList)) + " instances " + ','.join(stopList))
                 stopRDS(rds,stopList)
             else:
                 print ("No Instances to Stop")
