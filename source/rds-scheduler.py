@@ -124,19 +124,15 @@ def lambda_handler(event, context):
             for i in rdsinstances['DBInstances']:
                 rdsname = i['DBInstanceIdentifier']
                 if len(i['ReadReplicaDBInstanceIdentifiers']):
-                    print "----- No action against RDS instance (with read replica): ", rdsname
-                    continue
-
-                if "ReadReplicaSourceDBInstanceIdentifier" in i.keys():
-                    print "----- No action against RDS instance (replication): ", rdsname
+                    print "Read Replica Not Supported: ", rdsname
                     continue
 
                 if i['MultiAZ']:
-                    print "----- No action against RDS instance (Multiple AZ): ", rdsname
+                    print "Multiple AZ Not Supported: ", rdsname
                     continue
 
                 if i['DBInstanceStatus'] not in ["available","stopped"]:
-                    print "----- No action against RDS instance (unsupported status):", rdsname
+                    print "RDS Status not available or stopped:", rdsname
                     continue
 
                 arn = "arn:aws:rds:%s:%s:db:%s"%(awsregion,accountid,rdsname)
