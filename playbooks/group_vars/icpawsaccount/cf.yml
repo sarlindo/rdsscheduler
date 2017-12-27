@@ -1,0 +1,3 @@
+cf_stack_name: "rds-scheduler"
+cf_s3bucketname: "coderepo.arlindo.ca"
+cf_defaulttimezone: "US/Eastern"

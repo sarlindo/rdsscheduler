@@ -17,7 +17,7 @@ set -e
 if [ ${#StackStatus} -eq 0 ]
 then
   aws cloudformation create-stack --stack-name ${StackName} \
-      --template-body file://template/rds-scheduler.yaml \
+      --template-body file://templates/rds-scheduler.yaml \
     	--capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
       --profile ${ProfileName} \
     	--parameters \
@@ -28,7 +28,7 @@ then
   ChangeSetName="${StackName}-$(uuidgen)"
 
   aws cloudformation create-change-set --stack-name ${StackName} \
-      --template-body file://template/rds-scheduler.yaml \
+      --template-body file://templates/rds-scheduler.yaml \
       --change-set-name ${ChangeSetName} \
       --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
       --profile ${ProfileName} \

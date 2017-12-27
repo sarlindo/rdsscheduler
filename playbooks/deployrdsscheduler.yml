@@ -1,0 +1,109 @@
+---
+- name: AWS CF | Provision CloudFormation Stack
+  hosts: local
+  gather_facts: False
+
+  tasks:
+
+  - name: AWS CF | Zip up Release
+    local_action:
+      module: archive
+      path: "../source/"
+      dest: "/tmp/{{ cf_stack_name}}.zip"
+      format: zip
+
+  - name: AWS CF | Push Release to s3
+    local_action:
+      module: aws_s3
+      aws_access_key: "{{ aws_access_key }}"
+      aws_secret_key: "{{ aws_secret_key }}"
+      bucket: "{{ cf_s3bucketname }}"
+      region: "{{vpc_region}}"
+      object: "{{ cf_stack_name }}.zip"
+      src: "/tmp/{{ cf_stack_name }}.zip"
+      mode: put
+
+  - name: AWS CF | Set CF Change Stack name
+    local_action:
+      module: set_fact
+      changesetname: "{{ cf_stack_name }}-{{ 99999999 | random | to_uuid }}"
+
+  - name: AWS CF | Get CF Facts
+    local_action:
+      module: cloudformation_facts
+      aws_access_key: "{{ aws_access_key }}"
+      aws_secret_key: "{{ aws_secret_key }}"
+      stack_name: "{{ cf_stack_name }}"
+    register: cffacts
+    failed_when:
+       - "'msg' in cffacts and 'does not exist' not in cffacts.msg"
+       - "'ansible_facts' not in cffacts"
+
+  - name: AWS CF | Create CF
+    local_action:
+      module: cloudformation
+      aws_access_key: "{{ aws_access_key }}"
+      aws_secret_key: "{{ aws_secret_key }}"
+      stack_name: "{{ cf_stack_name }}"
+      state: "present"
+      disable_rollback: false
+      template: "files/rds-scheduler.yaml"
+      template_parameters:
+        S3BucketName: "{{ cf_s3bucketname }}"
+        DefaultTimeZone: "{{ cf_defaulttimezone }}"
+      tags:
+        Stack: "ansible-{{ cf_stack_name }}"
+    register: output
+    when: "'msg' in cffacts and 'does not exist' in cffacts.msg"
+
+  - name: AWS CF | Create CF ChangeSet
+    local_action:
+      module: cloudformation
+      aws_access_key: "{{ aws_access_key }}"
+      aws_secret_key: "{{ aws_secret_key }}"
+      stack_name: "{{ cf_stack_name }}"
+      state: "present"
+      changeset_name: "{{ changesetname }}"
+      create_changeset: true
+      disable_rollback: false
+      template: "files/rds-scheduler.yaml"
+      template_parameters:
+        S3BucketName: "{{ cf_s3bucketname }}"
+        DefaultTimeZone: "{{ cf_defaulttimezone }}"
+      tags:
+        Stack: "ansible-{{ cf_stack_name }}"
+    register: output
+    when: "'msg' not in cffacts"
+
+  - name: AWS CF | Describe CF Change Set
+    local_action:
+      module: shell aws cloudformation describe-change-set
+        --change-set-name {{ changesetname }}
+        --stack-name {{ cf_stack_name }}
+        --query Status
+        --output text
+    register: csstatus
+    until: ('CREATE_COMPLETE' in csstatus.stdout or 'FAILED' in csstatus.stdout)
+    retries: 30
+    delay: 30
+    when: "'msg' not in cffacts"
+
+  - name: AWS CF | Execute CF Change Set
+    local_action:
+      module: shell aws cloudformation execute-change-set
+        --change-set-name {{ changesetname }}
+        --stack-name {{ cf_stack_name }}
+    when: "'msg' not in cffacts and 'CREATE_COMPLETE' in csstatus.stdout"
+
+  - name: AWS CF | Get lambda function name
+    local_action:
+      module: shell aws lambda list-functions
+        --query Functions[].FunctionName | grep rdsSchedulerOptIn | sed s/\",*//g |tr -d '[:space:]'
+    register: lambdafunctionname
+
+  - name: AWS CF | Update lambda function
+    local_action:
+      module: shell aws lambda update-function-code
+        --function-name {{ lambdafunctionname.stdout }}
+        --s3-bucket {{ cf_s3bucketname }}
+        --s3-key {{ cf_stack_name }}.zip
